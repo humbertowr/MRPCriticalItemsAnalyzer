@@ -13,17 +13,19 @@ from datetime import datetime
 import os
 import logging
 from pathlib import Path
-from typing import Tuple, Optional, Dict, Any, List
-from functools import lru_cache
-from dataclasses import dataclass
+from typing import Tuple, Optional, List
+from dataclasses import dataclass, field
 
 # Configure detailed logging
+log_dir = Path.home() / '.mrp_analyzer'
+log_dir.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(Path.home() / '.mrp_analyzer' / 'mrp_analyzer.log')
+        logging.FileHandler(log_dir / 'mrp_analyzer.log')
     ]
 )
 
@@ -32,18 +34,18 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MRPConfig:
     """Configuration settings for MRP analysis."""
-    REQUIRED_COLUMNS: List[str] = (
+    REQUIRED_COLUMNS: List[str] = field(default_factory=lambda: [
         "CÓD", "DESCRIÇÃOPROMOB", "ESTQ10", "ESTQ20", "DEMANDAMRP",
         "ESTOQSEG", "FORNECEDORPRINCIPAL", "PEDIDOS", "OBS"
-    )
-    NUMERIC_COLUMNS: List[str] = (
+    ])
+    NUMERIC_COLUMNS: List[str] = field(default_factory=lambda: [
         "ESTQ10", "ESTQ20", "DEMANDAMRP", "ESTOQSEG", "PEDIDOS"
-    )
-    OUTPUT_COLUMNS: List[str] = (
+    ])
+    OUTPUT_COLUMNS: List[str] = field(default_factory=lambda: [
         "CÓD", "FORNECEDOR PRINCIPAL", "DESCRIÇÃOPROMOB", "ESTQ10", "ESTQ20",
         "DEMANDAMRP", "ESTOQSEG", "PEDIDOS", "ESTOQUE DISPONÍVEL",
         "QUANTIDADE A SOLICITAR", "OBS"
-    )
+    ])
     HISTORY_DIR: str = "historico_mrp"
     
 class ValidationError(Exception):
@@ -129,6 +131,39 @@ class MRPAnalyzer:
             df["DEMANDAMRP"] - df["ESTOQUE DISPONÍVEL"] + 
             df["ESTOQSEG"] - df["PEDIDOS"]
         ).clip(lower=0).round().astype(int)
+
+    def _load_and_validate_data(self, input_file: str, sheet_name: str) -> pd.DataFrame:
+        """Loads Excel data and executes all validation checks."""
+        if not os.path.exists(input_file):
+            raise FileNotFoundError(f"File not found: {input_file}")
+
+        df = pd.read_excel(
+            input_file,
+            sheet_name=sheet_name,
+            dtype={col: 'float64' for col in self.config.NUMERIC_COLUMNS}
+        )
+
+        df.columns = [col.strip().upper() for col in df.columns]
+        self.validator.validate_required_columns(df, self.config.REQUIRED_COLUMNS)
+        self.validator.validate_numeric_columns(df, self.config.NUMERIC_COLUMNS)
+        self.validator.validate_positive_values(df, self.config.NUMERIC_COLUMNS)
+        return df
+
+    def _prepare_critical_items(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Computes stock-related metrics and filters critical items."""
+        working_df = df.copy()
+        working_df["ESTOQUE DISPONÍVEL"] = self._calculate_available_stock(working_df)
+
+        critical_mask = (working_df["ESTOQUE DISPONÍVEL"] - working_df["DEMANDAMRP"]) < working_df["ESTOQSEG"]
+        critical_items = working_df[critical_mask].copy()
+        critical_items["QUANTIDADE A SOLICITAR"] = self._calculate_required_quantity(critical_items)
+        critical_items["FORNECEDOR PRINCIPAL"] = critical_items["FORNECEDORPRINCIPAL"]
+        critical_items["ESTOQUE DISPONÍVEL"] = critical_items["ESTOQUE DISPONÍVEL"].round().astype(int)
+        return critical_items
+
+    def _build_output_dataframe(self, critical_items: pd.DataFrame) -> pd.DataFrame:
+        """Builds the final output shape expected by exporters/UI."""
+        return critical_items[self.config.OUTPUT_COLUMNS].fillna("")
     
     def analyze(self, input_file: str, sheet_name: str, 
                output_file: str = 'itens_criticos.xlsx') -> Tuple[Optional[int], Optional[str], Optional[pd.DataFrame]]:
@@ -148,34 +183,10 @@ class MRPAnalyzer:
         """
         try:
             logger.info(f"Starting analysis of file: {input_file}")
-            
-            if not os.path.exists(input_file):
-                raise FileNotFoundError(f"File not found: {input_file}")
-            
-            # Optimized Excel reading
-            df = pd.read_excel(
-                input_file,
-                sheet_name=sheet_name,
-                dtype={col: 'float64' for col in self.config.NUMERIC_COLUMNS}
-            )
-            
-            # Normalize and validate columns
-            df.columns = [col.strip().upper() for col in df.columns]
-            self.validator.validate_required_columns(df, self.config.REQUIRED_COLUMNS)
-            self.validator.validate_numeric_columns(df, self.config.NUMERIC_COLUMNS)
-            self.validator.validate_positive_values(df, self.config.NUMERIC_COLUMNS)
-            
-            # Optimized calculations using numpy
-            df["ESTOQUE DISPONÍVEL"] = self._calculate_available_stock(df)
-            mask = (df["ESTOQUE DISPONÍVEL"] - df["DEMANDAMRP"]) < df["ESTOQSEG"]
-            critical_items = df[mask].copy()
-            
-            critical_items["QUANTIDADE A SOLICITAR"] = self._calculate_required_quantity(critical_items)
-            critical_items["FORNECEDOR PRINCIPAL"] = critical_items["FORNECEDORPRINCIPAL"]
-            critical_items["ESTOQUE DISPONÍVEL"] = critical_items["ESTOQUE DISPONÍVEL"].round().astype(int)
-            
-            # Prepare final output
-            output_df = critical_items[self.config.OUTPUT_COLUMNS].fillna("")
+
+            df = self._load_and_validate_data(input_file, sheet_name)
+            critical_items = self._prepare_critical_items(df)
+            output_df = self._build_output_dataframe(critical_items)
             self._save_results(output_df, output_file)
             
             return len(output_df), None, output_df
