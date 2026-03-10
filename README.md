@@ -12,6 +12,7 @@ Enterprise-grade tool for analyzing critical items in Material Requirements Plan
 - Demand forecasting integration
 - Comprehensive reporting and export capabilities
 - Multi-department collaboration support
+- Desktop-only interface built with Tkinter (no HTML/CSS frontend assets)
 
 ## Installation
 
