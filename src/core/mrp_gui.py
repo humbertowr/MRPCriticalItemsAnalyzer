@@ -22,7 +22,7 @@ import pandas as pd
 from ttkbootstrap import Style
 from ttkbootstrap.tooltip import ToolTip
 
-from mrp_analyzer import MRPAnalyzer, MRPConfig
+from src.core.mrp_analyzer import MRPAnalyzer, MRPConfig
 
 # Configure logging
 import logging
@@ -65,19 +65,37 @@ class GUIConfig:
         Returns:
             GUIConfig: Loaded or default configuration
         """
+        default_config = cls()
         try:
-            if cls.config_file.exists():
-                with open(cls.config_file) as f:
-                    return cls(**json.load(f))
+            if default_config.config_file.exists():
+                with open(default_config.config_file) as f:
+                    raw_config = json.load(f)
+
+                # Restore serialized tuple fields and keep a safe fallback for unknown keys
+                if 'window_size' in raw_config:
+                    raw_config['window_size'] = tuple(raw_config['window_size'])
+                if 'min_window_size' in raw_config:
+                    raw_config['min_window_size'] = tuple(raw_config['min_window_size'])
+                if 'config_dir' in raw_config:
+                    raw_config['config_dir'] = Path(raw_config['config_dir'])
+                if 'config_file' in raw_config:
+                    raw_config['config_file'] = Path(raw_config['config_file'])
+
+                return cls(**raw_config)
         except Exception as e:
             logger.error(f"Error loading config: {e}")
-        return cls()
+        return default_config
     
     def save(self) -> None:
         """Saves current configuration to file."""
         try:
+            payload = {
+                **self.__dict__,
+                'config_dir': str(self.config_dir),
+                'config_file': str(self.config_file),
+            }
             with open(self.config_file, 'w') as f:
-                json.dump(self.__dict__, f, indent=2)
+                json.dump(payload, f, indent=2)
             logger.info("Configuration saved successfully")
         except Exception as e:
             logger.error(f"Error saving config: {e}")
@@ -219,9 +237,9 @@ class MRPGUI:
             pass
 
     def _toggle_theme(self):
-        self.theme = "darkly" if self.theme == "flatly" else "flatly"
-        self.style.theme_use(self.theme)
-        self._log(f"Theme changed to: {self.theme}")
+        self.state.config.theme = "darkly" if self.state.config.theme == "flatly" else "flatly"
+        self.style.theme_use(self.state.config.theme)
+        self._log(f"Theme changed to: {self.state.config.theme}")
 
     def _build_ui(self):
         topbar = ttk.Frame(self.root)
