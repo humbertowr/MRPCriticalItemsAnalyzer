@@ -214,14 +214,6 @@ class MRPGUI:
         self.root.bind('<Control-t>', lambda e: self._toggle_theme())
         
         logger.debug("Event bindings configured")
-    
-    def _setup_shortcuts(self):
-        """Configura atalhos de teclado."""
-        self.root.bind('<Control-o>', lambda e: self._browse_file())
-        self.root.bind('<Control-s>', lambda e: self._export_excel())
-        self.root.bind('<Control-f>', lambda e: self._focus_filter())
-        self.root.bind('<Control-r>', lambda e: self._run_analysis())
-        self.root.bind('<Control-t>', lambda e: self._toggle_theme())
         
     def _on_closing(self):
         """Handler para fechamento da janela."""
@@ -572,6 +564,9 @@ class MRPGUI:
         self.stats_label = ttk.Label(nav_frame, text="")
         self.stats_label.pack(side=tk.LEFT, padx=10)
 
+        self.page_label = ttk.Label(nav_frame, text="")
+        self.page_label.pack(side=tk.LEFT, padx=10)
+
         btn_frame = ttk.Frame(nav_frame)
         btn_frame.pack(side=tk.RIGHT)
         btn_prev = ttk.Button(btn_frame, text="Previous", command=self._prev_page)
@@ -715,7 +710,7 @@ class MRPGUI:
         )
 
     def _apply_filter(self):
-        df = self.df_table.copy()
+        df = self.state.df_table.copy()
         col = self.filter_column.get()
         val = self.filter_value.get().strip().lower()
         min_qtd = self.qtd_min.get()
@@ -730,36 +725,39 @@ class MRPGUI:
             if max_qtd.isdigit():
                 df = df[df["QUANTIDADE A SOLICITAR"] <= int(max_qtd)]
 
-        self.df_table = df
-        self.current_page = 0
+        self.state.df_table = df
+        self.state.current_page = 0
+        self.state.filter_applied = True
+        self.state.update_pagination()
         self._render_table()
 
     def _sort_column(self, col):
-        self.df_table.sort_values(by=col, ascending=True, inplace=True, ignore_index=True)
-        self.current_page = 0
+        self.state.df_table.sort_values(by=col, ascending=True, inplace=True, ignore_index=True)
+        self.state.current_page = 0
+        self.state.update_pagination()
         self._render_table()
 
     def _prev_page(self):
-        if self.current_page > 0:
-            self.current_page -= 1
+        if self.state.current_page > 0:
+            self.state.current_page -= 1
             self._render_table()
 
     def _next_page(self):
-        if (self.current_page + 1) * self.page_size < len(self.df_table):
-            self.current_page += 1
+        if self.state.current_page < self.state.total_pages - 1:
+            self.state.current_page += 1
             self._render_table()
 
     def _export_csv(self):
         file = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
         if file:
-            self.df_table.to_csv(file, index=False)
+            self.state.df_table.to_csv(file, index=False)
             self._log(f"CSV saved: {file}", "success")
             messagebox.showinfo("Export", f"CSV file saved: {file}")
 
     def _export_excel(self):
         file = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")])
         if file:
-            self.df_table.to_excel(file, index=False)
+            self.state.df_table.to_excel(file, index=False)
             self._log(f"Excel saved: {file}", "success")
             messagebox.showinfo("Export", f"Excel file saved: {file}")
 
