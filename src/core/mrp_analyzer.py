@@ -32,18 +32,18 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MRPConfig:
     """Configuration settings for MRP analysis."""
-    REQUIRED_COLUMNS: List[str] = (
+    REQUIRED_COLUMNS: List[str] = [
         "CÓD", "DESCRIÇÃOPROMOB", "ESTQ10", "ESTQ20", "DEMANDAMRP",
         "ESTOQSEG", "FORNECEDORPRINCIPAL", "PEDIDOS", "OBS"
-    )
-    NUMERIC_COLUMNS: List[str] = (
+    ]
+    NUMERIC_COLUMNS: List[str] = [
         "ESTQ10", "ESTQ20", "DEMANDAMRP", "ESTOQSEG", "PEDIDOS"
-    )
-    OUTPUT_COLUMNS: List[str] = (
+    ]
+    OUTPUT_COLUMNS: List[str] = [
         "CÓD", "FORNECEDOR PRINCIPAL", "DESCRIÇÃOPROMOB", "ESTQ10", "ESTQ20",
         "DEMANDAMRP", "ESTOQSEG", "PEDIDOS", "ESTOQUE DISPONÍVEL",
         "QUANTIDADE A SOLICITAR", "OBS"
-    )
+    ]
     HISTORY_DIR: str = "historico_mrp"
     
 class ValidationError(Exception):

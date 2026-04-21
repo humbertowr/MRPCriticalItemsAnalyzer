@@ -1,1 +1,1 @@
-ÿþ
+"""Core modules for MRP analysis."""
